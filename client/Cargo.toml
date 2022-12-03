@@ -1,0 +1,24 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = "0.27.5"
+rayon = "1.6.0"
+glam = "0.22.0"
+hecs = "0.9.1"
+quinn = { git = "https://github.com/quinn-rs/quinn" }
+
+arboard = "3.2.0"
+anyhow = "1.0.66"
+log = "0.4.17"
+fern = "0.6.1"
+chrono = "0.4.23"
+
+common = { path = "common" }
+netcode = { path = "netcode" }
+renderer = { path = "renderer" }
+
+# Shared between client and server
+shared = { path = "../shared" }
