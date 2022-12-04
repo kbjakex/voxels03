@@ -1,7 +1,15 @@
+[workspace]
+members = ["crates/*", "core"]
+exclude = ["server"]
+
 [package]
-name = "client"
+name = "voxels03"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "client"
+path = "src/main.rs"
 
 [dependencies]
 winit = "0.27.5"
@@ -16,9 +24,9 @@ log = "0.4.17"
 fern = "0.6.1"
 chrono = "0.4.23"
 
-common = { path = "common" }
-netcode = { path = "netcode" }
-renderer = { path = "renderer" }
+common = { path = "crates/common" }
+netcode = { path = "crates/netcode" }
+renderer = { path = "crates/renderer" }
 
 # Shared between client and server
-shared = { path = "../shared" }
+core = { path = "core" }

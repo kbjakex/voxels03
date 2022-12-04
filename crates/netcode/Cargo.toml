@@ -11,4 +11,4 @@ quinn = { git = "https://github.com/quinn-rs/quinn" }
 rcgen = "0.10.0"
 bit_serializer = "0.0.1"
 
-shared = { path = "../../shared" }
+core = { path = "../../core" }

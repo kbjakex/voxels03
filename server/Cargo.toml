@@ -1,7 +1,11 @@
 [package]
-name = "server01"
+name = "server"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
 
 [dependencies]
 hecs = "0.9.1"
@@ -11,4 +15,5 @@ log = "0.4.17"
 fern = "0.6.1"
 chrono = "0.4.23"
 
-shared = { path = "../shared" }
+core = { path = "../core" }
+netcode = { path = "../crates/netcode" }

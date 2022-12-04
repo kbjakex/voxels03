@@ -205,26 +205,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arboard",
- "chrono",
- "common",
- "fern",
- "glam",
- "hecs",
- "log",
- "netcode",
- "quinn",
- "rayon",
- "renderer",
- "shared",
- "winit",
-]
-
-[[package]]
 name = "clipboard-win"
 version = "4.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,6 +274,13 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 [[package]]
 name = "common"
 version = "0.1.0"
+
+[[package]]
+name = "core"
+version = "0.1.0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "core-foundation"
@@ -438,6 +425,16 @@ name = "crunchy"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
+
+[[package]]
+name = "ctrlc"
+version = "3.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d91974fbbe88ec1df0c24a4f00f99583667a7e2e6272b2b92d294d81e462173"
+dependencies = [
+ "nix 0.25.1",
+ "winapi",
+]
 
 [[package]]
 name = "cty"
@@ -1021,10 +1018,10 @@ version = "0.1.0"
 dependencies = [
  "bit_serializer",
  "bytemuck",
+ "core",
  "quinn",
  "rcgen",
  "rustls",
- "shared",
  "tokio",
 ]
 
@@ -1603,6 +1600,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "core",
+ "ctrlc",
+ "fern",
+ "hecs",
+ "log",
+ "netcode",
+]
+
+[[package]]
 name = "servo-fontconfig"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1621,13 +1632,6 @@ dependencies = [
  "expat-sys",
  "freetype-sys",
  "pkg-config",
-]
-
-[[package]]
-name = "shared"
-version = "0.1.0"
-dependencies = [
- "log",
 ]
 
 [[package]]
@@ -1938,6 +1942,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c6a0bda9bbe6b9e50e6456c80aa8fe4cca3b21e4311a1130c41e4915ec2e32a"
 dependencies = [
  "xml-rs",
+]
+
+[[package]]
+name = "voxels03"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "chrono",
+ "common",
+ "core",
+ "fern",
+ "glam",
+ "hecs",
+ "log",
+ "netcode",
+ "quinn",
+ "rayon",
+ "renderer",
+ "winit",
 ]
 
 [[package]]
