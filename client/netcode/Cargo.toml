@@ -10,5 +10,9 @@ rustls = { version = "0.20.7", default-features = false, features = ["dangerous_
 quinn = { git = "https://github.com/quinn-rs/quinn" }
 rcgen = "0.10.0"
 bit_serializer = "0.0.1"
+flexstr = "0.9.2"
+anyhow = "1.0.66"
+glam = "0.22.0"
+log = "0.4.17"
 
 shared = { path = "../../shared" }

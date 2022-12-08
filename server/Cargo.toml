@@ -10,5 +10,8 @@ anyhow = "1.0.66"
 log = "0.4.17"
 fern = "0.6.1"
 chrono = "0.4.23"
+glam = "0.22.0"
+
+netcode = { path = "netcode" }
 
 shared = { path = "../shared" }
