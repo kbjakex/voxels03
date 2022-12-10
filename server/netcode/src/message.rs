@@ -1,16 +1,18 @@
 use flexstr::SharedStr;
-use shared::{bits_and_bytes::{ByteReader, ByteWriter}, net::NetworkId};
+use shared::{
+    bits_and_bytes::{ByteReader, ByteWriter},
+    net::NetworkId,
+};
 use tokio::sync::oneshot;
 
 use crate::login_listener::LoginResponse;
 
 pub enum InMsg<'a> {
     Chat(&'a str),
-
 }
 
 impl InMsg<'_> {
-    const CHAT : u8 = 1;
+    const CHAT: u8 = 1;
 }
 
 impl<'a> InMsg<'a> {
@@ -18,7 +20,7 @@ impl<'a> InMsg<'a> {
         let mut reader = ByteReader::new(stream);
         match stream[0] {
             Self::CHAT => Self::Chat(reader.read_str()),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
