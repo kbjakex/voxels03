@@ -1,5 +1,5 @@
 use quinn::RecvStream;
-use shared::bits_and_bytes::ByteReader;
+use shared::serialization::ByteReader;
 
 pub async fn receive_bytes<'a>(stream: &mut RecvStream, buf: &'a mut Vec<u8>) -> anyhow::Result<ByteReader<'a>> {
     let mut header = [0u8; 2];

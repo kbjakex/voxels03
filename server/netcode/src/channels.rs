@@ -1,6 +1,6 @@
 use flexstr::SharedStr;
 use quinn::{RecvStream, SendStream};
-use shared::{bits_and_bytes::ByteWriter, net::NetworkId};
+use shared::{serialization::ByteWriter, net::NetworkId};
 use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 
 use crate::util::receive_bytes;

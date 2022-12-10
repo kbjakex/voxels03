@@ -1,6 +1,6 @@
 pub mod anti_jitter;
 pub mod net;
-pub mod bits_and_bytes;
+pub mod serialization;
 
 use std::time::Duration;
 

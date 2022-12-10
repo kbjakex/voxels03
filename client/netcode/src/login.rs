@@ -4,7 +4,7 @@ use flexstr::SharedStr;
 use glam::{Vec3, Vec2};
 use log::info;
 use quinn::{Endpoint, Connection};
-use shared::{net::NetworkId, bits_and_bytes::ByteWriter};
+use shared::{net::NetworkId, serialization::ByteWriter};
 
 use crate::util::receive_bytes;
 

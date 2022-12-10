@@ -8,7 +8,7 @@ use flexstr::{ToSharedStr, SharedStr};
 use glam::{Vec3, Vec2};
 use log::{warn, debug, info};
 use quinn::{Endpoint, Connection};
-use shared::{net::{PROTOCOL_MAGIC, PROTOCOL_VERSION, NetworkId}, bits_and_bytes::ByteWriter};
+use shared::{net::{PROTOCOL_MAGIC, PROTOCOL_VERSION, NetworkId}, serialization::ByteWriter};
 use tokio::{task, sync::{oneshot, mpsc::{Sender, unbounded_channel, UnboundedSender}}};
 
 use crate::{util::receive_bytes, net_thread::NetChannels, message::{ServerMsg, PlayerJoin}, channels};

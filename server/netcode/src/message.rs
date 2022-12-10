@@ -1,6 +1,6 @@
 use flexstr::SharedStr;
 use shared::{
-    bits_and_bytes::{ByteReader, ByteWriter},
+    serialization::{ByteReader, ByteWriter},
     net::NetworkId,
 };
 use tokio::sync::oneshot;

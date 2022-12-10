@@ -1,5 +1,5 @@
 use quinn::RecvStream;
-use shared::bits_and_bytes::ByteReader;
+use shared::serialization::ByteReader;
 
 // This exact same code exists separately in client and server now, but adding it to `shared` would
 // require adding at least Quinn as a dependency, and it is huge... hmm.
