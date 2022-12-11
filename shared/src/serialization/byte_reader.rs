@@ -3,7 +3,6 @@ pub struct ByteReader<'a> {
     pos: usize,
 }
 
-#[allow(unused)]
 impl<'a> ByteReader<'a> {
     pub fn new(src: &'a [u8]) -> Self {
         Self { src, pos: 0 }
@@ -47,112 +46,69 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn read(&mut self, dst: &mut [u8]) {
-        #[cfg(not(debug_assertions))]
-        dst.copy_from_slice(unsafe { self.src.get_unchecked(self.pos..self.pos + dst.len()) });
-        #[cfg(debug_assertions)]
         dst.copy_from_slice(&self.src[self.pos..self.pos + dst.len()]);
         self.pos += dst.len();
-    }
-
-    pub fn read_varint15(&mut self) -> u16 {
-        let b1 = self.read_u8();
-        if (b1 & 128) != 0 {
-            (b1 as u16 & 127) | ((self.read_u8() as u16) << 7)
-        } else {
-            b1 as u16
-        }
     }
 
     pub fn read_u8(&mut self) -> u8 {
         let p = self.pos;
         self.pos += 1;
-        debug_assert!(p < self.src.len());
-        u8::from_le_bytes(unsafe { [*self.src.get_unchecked(p)] })
+
+        // Is this assert needed?
+        assert!(
+            self.pos < self.src.len(),
+            "ByteReader::read_u8: not enough bytes"
+        );
+        self.src[p]
     }
 
     pub fn read_u16(&mut self) -> u16 {
         let p = self.pos;
         self.pos += 2;
-        debug_assert!(p + 1 < self.src.len());
-        u16::from_le_bytes(unsafe { [*self.src.get_unchecked(p), *self.src.get_unchecked(p + 1)] })
+
+        assert!(
+            self.pos < self.src.len(),
+            "ByteReader::read_u16: not enough bytes"
+        );
+        u16::from_le_bytes(self.src[p..].try_into().unwrap()) // i hate this
     }
 
     pub fn read_u32(&mut self) -> u32 {
         let p = self.pos;
         self.pos += 4;
-        debug_assert!(p + 3 < self.src.len());
-        u32::from_le_bytes(unsafe {
-            [
-                *self.src.get_unchecked(p),
-                *self.src.get_unchecked(p + 1),
-                *self.src.get_unchecked(p + 2),
-                *self.src.get_unchecked(p + 3),
-            ]
-        })
+
+        assert!(
+            self.pos < self.src.len(),
+            "ByteReader::read_u32: not enough bytes"
+        );
+        u32::from_le_bytes(self.src[p..].try_into().unwrap())
     }
 
     pub fn read_u64(&mut self) -> u64 {
         let p = self.pos;
         self.pos += 8;
-        debug_assert!(p + 7 < self.src.len());
-        u64::from_le_bytes(unsafe {
-            [
-                *self.src.get_unchecked(p),
-                *self.src.get_unchecked(p + 1),
-                *self.src.get_unchecked(p + 2),
-                *self.src.get_unchecked(p + 3),
-                *self.src.get_unchecked(p + 4),
-                *self.src.get_unchecked(p + 5),
-                *self.src.get_unchecked(p + 6),
-                *self.src.get_unchecked(p + 7),
-            ]
-        })
+
+        assert!(
+            self.pos < self.src.len(),
+            "ByteReader::read_u64: not enough bytes"
+        );
+        u64::from_le_bytes(self.src[p..].try_into().unwrap())
     }
 
     pub fn read_i8(&mut self) -> i8 {
-        let p = self.pos;
-        self.pos += 1;
-        debug_assert!(p < self.src.len());
-        i8::from_le_bytes(unsafe { [*self.src.get_unchecked(p)] })
+        self.read_u8() as i8
     }
 
     pub fn read_i16(&mut self) -> i16 {
-        let p = self.pos;
-        self.pos += 2;
-        debug_assert!(p + 1 < self.src.len());
-        i16::from_le_bytes(unsafe { [*self.src.get_unchecked(p), *self.src.get_unchecked(p + 1)] })
+        self.read_u16() as i16
     }
 
     pub fn read_i32(&mut self) -> i32 {
-        let p = self.pos;
-        self.pos += 4;
-        debug_assert!(p + 3 < self.src.len());
-        i32::from_le_bytes(unsafe {
-            [
-                *self.src.get_unchecked(p),
-                *self.src.get_unchecked(p + 1),
-                *self.src.get_unchecked(p + 2),
-                *self.src.get_unchecked(p + 3),
-            ]
-        })
+        self.read_u32() as i32
     }
 
     pub fn read_i64(&mut self) -> i64 {
-        let p = self.pos;
-        self.pos += 8;
-        debug_assert!(p + 7 < self.src.len());
-        i64::from_le_bytes(unsafe {
-            [
-                *self.src.get_unchecked(p),
-                *self.src.get_unchecked(p + 1),
-                *self.src.get_unchecked(p + 2),
-                *self.src.get_unchecked(p + 3),
-                *self.src.get_unchecked(p + 4),
-                *self.src.get_unchecked(p + 5),
-                *self.src.get_unchecked(p + 6),
-                *self.src.get_unchecked(p + 7),
-            ]
-        })
+        self.read_u64() as i64
     }
 
     pub fn read_f32(&mut self) -> f32 {
@@ -168,12 +124,8 @@ impl<'a> ByteReader<'a> {
 
         let pos = self.pos;
         self.pos += len;
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            std::str::from_utf8_unchecked(&self.src[pos..pos + len])
-        }
-        #[cfg(debug_assertions)]
-        std::str::from_utf8(&self.src[pos..pos + len]).unwrap()
+
+        std::str::from_utf8(&self.src[pos..self.pos]).unwrap()
     }
 
     pub fn read_bool(&mut self) -> bool {
