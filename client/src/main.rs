@@ -1,4 +1,5 @@
 use log::info;
+use resources::Resources;
 use views::{StateChange, View};
 use winit::{
     event_loop::{ControlFlow, EventLoop}, event::{Event, WindowEvent},
@@ -18,33 +19,39 @@ fn main() {
 
     let mut resources = resources::init_resources("Game", &event_loop);
     let mut view = View::main_menu();
+    view.on_enter(&mut resources).unwrap();
 
     event_loop.run(move |event, _, flow| {
-        resources::update_pre(&mut resources, &event);
-
         if let Event::LoopDestroyed | Event::WindowEvent { event: WindowEvent::CloseRequested, .. } = event {
-            view.on_exit().unwrap();
+            view.on_exit(&mut resources).unwrap();
             *flow = ControlFlow::Exit;
             return;
         }
-
-        if let Some(change) = view.on_event(event) {
-            process_state_change(*change, &mut view, flow);
+        
+        if let Event::MainEventsCleared = event {
+            resources::update_pre(&mut resources, &event);
+            if let Some(change) = view.on_update(&mut resources) {
+                process_state_change(*change, &mut view, &mut resources, flow);
+            }
+            resources::update_post(&mut resources);
+        } else if let Some(change) = view.on_event(event, &mut resources) {
+            process_state_change(*change, &mut view, &mut resources, flow);
         }
 
-        resources::update_post(&mut resources);
     });
 }
 
 #[cold]
 #[inline(never)]
-fn process_state_change(change: StateChange, view: &mut Box<View>, flow: &mut ControlFlow) {
+fn process_state_change(change: StateChange, view: &mut Box<View>, res: &mut Resources, flow: &mut ControlFlow) {
     match change {
-        StateChange::Exit => *flow = ControlFlow::Exit,
+        StateChange::Exit => {
+            *flow = ControlFlow::Exit;
+        }
         StateChange::SwitchTo(new_view) => {
-            view.on_exit().unwrap();
+            view.on_exit(res).unwrap();
             *view = new_view;
-            view.on_enter().unwrap();
+            view.on_enter(res).unwrap();
         }
     }
 }

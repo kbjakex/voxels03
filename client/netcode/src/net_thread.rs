@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use flexstr::SharedStr;
-use log::{error, warn, debug};
+use log::{error, debug};
 use tokio::sync::{oneshot, mpsc::{Sender, Receiver}};
 
 use crate::login::{LoginResponse, self};
@@ -26,7 +26,6 @@ async fn net_main(
     let (endpoint, mut _connection, response) = match login::try_connect(server_address, &username).await {
         Ok(tuple) => tuple,
         Err(e) => {
-            warn!("Connection failed: {e}");
             let _ = on_connect.send(Err(format!("Connection failed: {e}").into_boxed_str()));
             return Ok(());
         }

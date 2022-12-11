@@ -10,3 +10,5 @@ vulkano-win = { git = "https://github.com/vulkano-rs/vulkano" }
 vulkano-util = { git = "https://github.com/vulkano-rs/vulkano" }
 bytemuck = "1.12.3"
 glam = "0.22.0"
+anyhow = "1.0.66"
+log = "0.4.17"

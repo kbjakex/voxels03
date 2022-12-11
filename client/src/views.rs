@@ -1,6 +1,6 @@
 use winit::event::Event;
 
-use crate::{main_menu_view::MainMenuView, game_view::GameView};
+use crate::{main_menu_view::MainMenuView, game_view::GameView, resources::Resources};
 
 pub enum StateChange {
     Exit,
@@ -30,26 +30,30 @@ impl View {
     }
 }
 
+macro_rules! switch {
+    ($what:expr, $s:tt => $f:expr) => {
+        return match $what {
+            View::MainMenu($s) => $f,
+            View::Game($s) => $f,
+        }
+    };
+}
+
 impl View {
-    pub fn on_enter(&mut self) -> anyhow::Result<()> {
-        match self {
-            View::MainMenu(state) => state.on_enter_view(),
-            View::Game(state) => state.on_enter_view(),
-        }
-    }
-    
-    pub fn on_exit(&mut self) -> anyhow::Result<()> {
-        match self {
-            View::MainMenu(state) => state.on_exit_view(),
-            View::Game(state) => state.on_exit_view(),
-        }
+    pub fn on_enter(&mut self, res: &mut Resources) -> anyhow::Result<()> {
+        switch!(self, state => state.on_enter_view(res));
     }
 
-    pub fn on_event(&mut self, event: Event<()>) -> Option<Box<StateChange>> {
-        match self {
-            View::MainMenu(state) => state.on_event(event),
-            View::Game(state) => state.on_event(event),
-        }
+    pub fn on_exit(&mut self, res: &mut Resources) -> anyhow::Result<()> {
+        switch!(self, state => state.on_exit_view(res));
+    }
+
+    pub fn on_update(&mut self, res: &mut Resources) -> Option<Box<StateChange>> {
+        switch!(self, state => state.on_update(res));
+    }
+
+    pub fn on_event(&mut self, event: Event<()>, res: &mut Resources) -> Option<Box<StateChange>> {
+        switch!(self, state => state.on_event(event, res));
     }
 }
 
