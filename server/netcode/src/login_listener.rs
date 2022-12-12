@@ -72,8 +72,8 @@ async fn login(connection: Connection, channels: PerClientChannels) -> anyhow::R
     debug!("Received login message! Length: {}", reader.bytes_remaining());
     
     if reader.bytes_remaining() < 6 // magic + protocol ver + username length + username >= 6
-        || reader.read_u16() != PROTOCOL_MAGIC 
-        || reader.read_u16() != PROTOCOL_VERSION 
+        || dbg![reader.read_u16()] != PROTOCOL_MAGIC 
+        || dbg![reader.read_u16()] != PROTOCOL_VERSION 
     { 
         connection.close(quinn::VarInt::from_u32(1), b"Invalid login request");
         anyhow::bail!("Invalid login request");

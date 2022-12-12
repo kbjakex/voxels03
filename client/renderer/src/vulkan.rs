@@ -7,11 +7,13 @@ use vulkano::{
     },
     image::{ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
-    swapchain::{Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+    swapchain::{Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError, PresentMode},
     VulkanLibrary, memory::allocator::{StandardMemoryAllocator}, command_buffer::{allocator::{StandardCommandBufferAllocator, CommandBufferAllocator}, AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
 };
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
+
+pub const PRESENT_MODE: PresentMode = PresentMode::Fifo;
 
 pub type CmdBufBuilder = AutoCommandBufferBuilder<
     PrimaryAutoCommandBuffer<<StandardCommandBufferAllocator as CommandBufferAllocator>::Alloc>,
@@ -21,7 +23,6 @@ pub type CmdBufBuilder = AutoCommandBufferBuilder<
 pub struct VkState {
     pub lib: Arc<VulkanLibrary>,
     pub instance: Arc<Instance>,
-    pub physical_device: Arc<PhysicalDevice>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub swapchain: Arc<Swapchain>,
@@ -83,7 +84,6 @@ pub fn init_vulkan(window: Arc<Window>) -> anyhow::Result<VkState> {
     Ok(VkState {
         lib,
         instance,
-        physical_device,
         device,
         queue,
         swapchain,
@@ -153,6 +153,7 @@ fn create_swapchain(
                 .into_iter()
                 .next()
                 .unwrap(),
+            present_mode: PRESENT_MODE,
             ..Default::default()
         },
     )

@@ -1,26 +1,33 @@
 mod state;
 mod vulkan;
+pub mod camera;
+pub mod game_renderer;
 
 use std::sync::Arc;
 
 use log::warn;
-use state::State;
-use vulkan::{VkState, CmdBufBuilder};
+use vulkan::{CmdBufBuilder, VkState};
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage,
     },
     swapchain::{
-        acquire_next_image, SwapchainCreateInfo, SwapchainCreationError,
-        SwapchainPresentInfo,
+        acquire_next_image, SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
 };
 use winit::window::Window;
 
+// The renderer crate.
+// Ideally the implementation details are kept blackboxed from the client, so
+// primarily, anything Vulkan related should stay contained here.
+
+
+/// A generic base for rendering. This is mostly here to contain the
+/// context-independent state and do the dirtywork (sync, swapchain management,
+/// etc) that isn't interesting to look at.
 pub struct Renderer {
-    vk: VkState,
-    state: State,
+    pub(crate) vk: VkState,
 
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -34,13 +41,11 @@ impl Renderer {
         // little to no difference whether it's a crash or a catch-and-print.
         // Until a fancier launching system is implemented anyhow.
         let vk = vulkan::init_vulkan(window).unwrap();
-        let state = state::init(&vk).unwrap();
 
         let previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
 
         Self {
             vk,
-            state,
 
             recreate_swapchain: false,
             previous_frame_end,
@@ -49,13 +54,10 @@ impl Renderer {
 }
 
 impl Renderer {
-    fn render_inner(&mut self, commands: &mut CmdBufBuilder) -> anyhow::Result<()> {
-        
-        Ok(())
-    }
-
-    pub fn render(&mut self) -> anyhow::Result<()> {
-        // Do the dirty uninteresting generic work to keep actual render function clean
+    pub(crate) fn render<F>(&mut self, mut callback: F) -> anyhow::Result<()> 
+        where F: FnMut(&Renderer, &mut CmdBufBuilder, /* image index */ usize) -> anyhow::Result<()>
+    {
+        // Do the dirty & uninteresting & generic work to keep actual render function clean
         let vk = &self.vk;
         let (image_index, _suboptimal, acquire_future) =
             acquire_next_image(vk.swapchain.clone(), None)?;
@@ -67,7 +69,7 @@ impl Renderer {
         )
         .unwrap();
 
-        self.render_inner(&mut builder)?;
+        callback(self, &mut builder, image_index as usize)?;
 
         let vk = &self.vk;
         let command_buffer = builder.build()?;

@@ -1,22 +1,26 @@
 pub mod state;
 
 use log::debug;
-use winit::event::Event;
+use netcode::login::LoginResponse;
+use renderer::game_renderer::GameRenderer;
+use winit::event::{Event, WindowEvent};
 
-use crate::{views::StateChange, resources::Resources};
+use crate::{views::StateChange, resources::Resources, world::chunk::WorldBlockPosExt};
 
 use self::state::GameState;
 
 pub struct GameView {
-    _state: GameState
+    _state: GameState,
+    renderer: GameRenderer,
 }
 
 impl GameView {
-    pub fn new() -> Self {
+    pub fn new(login_response: LoginResponse, res: &mut Resources) -> Self {
         Self {
             _state: GameState {
 
-            }
+            },
+            renderer: GameRenderer::new(login_response.position.as_ivec3().to_chunk_pos(), &res.renderer)
         }
     }
 }
@@ -33,12 +37,14 @@ impl GameView {
     }
 
     pub fn on_update(&mut self, res: &mut Resources) -> Option<Box<StateChange>> {
-        res.renderer.render().unwrap();
+        self.renderer.render(&mut res.renderer).unwrap();
         None
     }
 
-    pub fn on_event(&mut self, _event: Event<()>, _res: &mut Resources) -> Option<Box<StateChange>> {
-
+    pub fn on_event(&mut self, event: Event<()>, res: &mut Resources) -> Option<Box<StateChange>> {
+        if let Event::WindowEvent { event: WindowEvent::Resized(..), ..} = event {
+            self.renderer.handle_window_resize(&res.renderer);
+        }
         None
     }
 }

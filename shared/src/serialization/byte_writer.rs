@@ -1,6 +1,8 @@
+use log::debug;
+
 pub struct ByteWriter<'a> {
     dst: &'a mut [u8],
-    pos: u32,
+    pos: usize,
 }
 
 impl<'a> ByteWriter<'a> {
@@ -17,20 +19,19 @@ impl<'a> ByteWriter<'a> {
     }
 
     pub fn space_remaining(&self) -> usize {
-        self.dst.len() - self.pos as usize
+        self.dst.len() - self.pos
     }
 
     pub fn skip(&mut self, count: usize) -> &mut Self {
-        self.pos += count as u32;
+        self.pos += count;
+        
         self
     }
 
     pub fn write(&mut self, src: &[u8]) -> &mut Self {
-        debug_assert!(src.len() <= self.dst.len() - self.pos as usize);
-
-        self.dst[self.pos as usize..].copy_from_slice(src);
-        self.pos += src.len() as u32;
-
+        self.dst[self.pos..self.pos + src.len()].copy_from_slice(src);
+        self.pos += src.len();
+        
         self
     }
 
@@ -38,59 +39,37 @@ impl<'a> ByteWriter<'a> {
         // Probably could be replaced with a scoped-macro guard thing
         let len = (self.bytes_written() as u16).saturating_sub(2);
         self.dst[..2].copy_from_slice(&u16::to_le_bytes(len));
-
+        
         self
     }
 
     pub fn write_u8(&mut self, x: u8) -> &mut Self {
-        // Are these even needed anymore?
-        // I'll keep them for now, can be removed in later review
-        assert!(
-            self.dst.len() - self.pos as usize >= 1,
-            "ByteWriter::write_u8: not enough space"
-        );
-
-        self.dst[self.pos as usize] = x;
+        self.dst[self.pos] = x;
         self.pos += 1;
 
         self
     }
 
     pub fn write_u16(&mut self, x: u16) -> &mut Self {
-        assert!(
-            self.dst.len() - self.pos as usize >= 2,
-            "ByteWriter::write_u16: not enough space"
-        );
-
         let bytes = u16::to_le_bytes(x);
-        self.dst[self.pos as usize..].copy_from_slice(&bytes);
-        self.pos += bytes.len() as u32;
+        self.dst[self.pos..self.pos + 2].copy_from_slice(&bytes);
+        self.pos += bytes.len();
 
         self
     }
 
     pub fn write_u32(&mut self, x: u32) -> &mut Self {
-        assert!(
-            self.dst.len() - self.pos as usize >= 4,
-            "ByteWriter::write_u32: not enough space"
-        );
-
         let bytes = u32::to_le_bytes(x);
-        self.dst[self.pos as usize..].copy_from_slice(&bytes);
-        self.pos += bytes.len() as u32;
+        self.dst[self.pos..self.pos + 4].copy_from_slice(&bytes);
+        self.pos += bytes.len();
 
         self
     }
 
     pub fn write_u64(&mut self, x: u64) -> &mut Self {
-        assert!(
-            self.dst.len() - self.pos as usize >= 8,
-            "ByteWriter::write_u64: not enough space"
-        );
-
         let bytes = u64::to_le_bytes(x);
-        self.dst[self.pos as usize..].copy_from_slice(&bytes);
-        self.pos += bytes.len() as u32;
+        self.dst[self.pos..self.pos + 8].copy_from_slice(&bytes);
+        self.pos += bytes.len();
 
         self
     }
@@ -133,10 +112,10 @@ impl<'a> ByteWriter<'a> {
     }
 
     pub fn bytes(&self) -> &[u8] {
-        &self.dst[..self.pos as usize]
+        &self.dst[..self.pos]
     }
 
     pub fn into_bytes(self) -> &'a [u8] {
-        &self.dst[..self.pos as usize]
+        &self.dst[..self.pos]
     }
 }

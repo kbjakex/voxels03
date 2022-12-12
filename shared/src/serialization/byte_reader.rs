@@ -53,46 +53,25 @@ impl<'a> ByteReader<'a> {
     pub fn read_u8(&mut self) -> u8 {
         let p = self.pos;
         self.pos += 1;
-
-        // Is this assert needed?
-        assert!(
-            self.pos < self.src.len(),
-            "ByteReader::read_u8: not enough bytes"
-        );
         self.src[p]
     }
 
     pub fn read_u16(&mut self) -> u16 {
         let p = self.pos;
         self.pos += 2;
-
-        assert!(
-            self.pos < self.src.len(),
-            "ByteReader::read_u16: not enough bytes"
-        );
-        u16::from_le_bytes(self.src[p..].try_into().unwrap()) // i hate this
+        u16::from_le_bytes(self.src[p..p+2].try_into().unwrap()) // i hate this
     }
 
     pub fn read_u32(&mut self) -> u32 {
         let p = self.pos;
         self.pos += 4;
-
-        assert!(
-            self.pos < self.src.len(),
-            "ByteReader::read_u32: not enough bytes"
-        );
-        u32::from_le_bytes(self.src[p..].try_into().unwrap())
+        u32::from_le_bytes(self.src[p..p+4].try_into().unwrap())
     }
 
     pub fn read_u64(&mut self) -> u64 {
         let p = self.pos;
         self.pos += 8;
-
-        assert!(
-            self.pos < self.src.len(),
-            "ByteReader::read_u64: not enough bytes"
-        );
-        u64::from_le_bytes(self.src[p..].try_into().unwrap())
+        u64::from_le_bytes(self.src[p..p+8].try_into().unwrap())
     }
 
     pub fn read_i8(&mut self) -> i8 {

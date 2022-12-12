@@ -63,7 +63,7 @@ pub mod input {
         pub settings: input::settings::InputSettings,
         pub clipboard: arboard::Clipboard,
 
-        // tracking for event-based input handling
+        // tracking for event-based input handling (i.e without Keyboard)
         pub keyboard_mods: ModifiersState,
     }
 }

@@ -1,5 +1,5 @@
 #[test]
-pub fn test_roundtrip() {
+pub fn test_bit_rw_roundtrip() {
     let mut buf = [0u8; 28];
     let mut writer = super::BitWriter::new(&mut buf);
 
@@ -47,4 +47,35 @@ pub fn test_roundtrip() {
     assert_eq!(reader.uint(32), 0);
     assert_eq!(reader.uint(32), 0);
     assert_eq!(reader.uint(32), 0);
+}
+
+#[test]
+fn test_byte_rw_roundtrip() {
+    let mut buf = [0u8; 32];
+    let mut writer = super::ByteWriter::new(&mut buf);
+
+    writer.write_bool(true);
+    writer.write_bool(false);
+    writer.write_u8(0x13);
+    writer.write_i8(-0x13);
+    writer.write_u16(0xAAAA);
+    writer.write_i16(0x7FFF);
+    writer.write_u32(0xFFFF_FFFF);
+    writer.write_i32(-1);
+    writer.write_u64(0x1234_5678_9876_5432);
+    writer.write_i64(-0x123456789);
+
+    assert_eq!(writer.bytes_written(), 32);
+
+    let mut reader = super::ByteReader::new(&buf);
+    assert_eq!(reader.read_bool(), true);
+    assert_eq!(reader.read_bool(), false);
+    assert_eq!(reader.read_u8(), 0x13);
+    assert_eq!(reader.read_i8(), -0x13);
+    assert_eq!(reader.read_u16(), 0xAAAA);
+    assert_eq!(reader.read_i16(), 0x7FFF);
+    assert_eq!(reader.read_u32(), 0xFFFF_FFFF);
+    assert_eq!(reader.read_i32(), -1);
+    assert_eq!(reader.read_u64(), 0x1234_5678_9876_5432);
+    assert_eq!(reader.read_i64(), -0x123456789);
 }

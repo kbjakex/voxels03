@@ -32,12 +32,12 @@ impl MainMenuView {
         Ok(())
     }
 
-    pub fn on_update(&mut self, _res: &mut Resources) -> Option<Box<StateChange>> {
+    pub fn on_update(&mut self, res: &mut Resources) -> Option<Box<StateChange>> {
         match self.connecting.tick() {
             Ok(None) => {},
             Ok(Some((response, _connection))) => {
                 info!("Connected! {response:?}");
-                return switch_to(View::game());
+                return switch_to(View::game(response, res));
             }
             Err(e) => {
                 warn!("Error: {e}, retrying...");
