@@ -32,10 +32,10 @@ pub struct ChunkMeshView<'a> {
 }
 
 pub struct RenderChunk {
-    /// Offset to the buffer, in faces.
-    offset: NonZeroU32,
     /// Number of faces in the chunk.
-    num_faces: u32,
+    num_faces: NonZeroU32,
+    /// Offset to the buffer, in faces.
+    offset: u32,
 }
 
 pub struct RenderWorld {

@@ -1,4 +1,3 @@
-mod state;
 mod vulkan;
 pub mod camera;
 pub mod game_renderer;
