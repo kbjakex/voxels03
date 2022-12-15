@@ -1,8 +1,8 @@
-use std::{time::Instant, sync::Arc};
+use std::{time::Instant};
 
 use glam::{ivec2, vec2};
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use renderer::Renderer;
+use renderer::{ash_port::RendererBase};
 use winit::{event_loop::EventLoop, dpi::LogicalPosition, window::{WindowBuilder, Window}, event::{Event, WindowEvent}};
 
 use crate::util::{self, input::{Keyboard, Mouse}};
@@ -13,10 +13,10 @@ use crate::util::{self, input::{Keyboard, Mouse}};
 /// should be elsewhere
 pub struct Resources {
     pub time: core::Time,
-    pub window_handle: Arc<Window>, // Arc because Vulkano.. see Renderer
+    pub window_handle: Window,
     pub window_size: core::WindowSize,
 
-    pub renderer: Renderer,
+    pub renderer: RendererBase,
     pub input: input::Resources,
     pub thread_pool: ThreadPool,
     pub metrics: metrics::Resources,
@@ -86,10 +86,11 @@ pub fn init_resources(title: &'static str, event_loop: &EventLoop<()>) -> Resour
         .with_maximized(true)
         .build(&event_loop)
         .unwrap();
-    let window = Arc::new(window);
 
     // Allocate all but one core/thread to the threadpool
     let thread_pool_threads = std::thread::available_parallelism().unwrap().get() - 1;
+
+    let renderer = RendererBase::new(&window);
 
     Resources {
         time: core::Time {
@@ -99,13 +100,13 @@ pub fn init_resources(title: &'static str, event_loop: &EventLoop<()>) -> Resour
             secs_f32: 0.0,
             dt_secs: 0.0,
         },
-        window_handle: window.clone(),
+        window_handle: window,
         window_size: core::WindowSize {
             w_h: ivec2(window_size.width, window_size.height),
             w_h_f32: vec2(window_size.width as f32, window_size.height as f32),
             monitor_size_px: fullscreen_size,
         },
-        renderer: Renderer::new(window),
+        renderer,
         input: util::input::init((window_size.width, window_size.height)).unwrap(),
         thread_pool: ThreadPoolBuilder::new()
             .num_threads(thread_pool_threads)

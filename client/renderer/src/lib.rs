@@ -1,6 +1,7 @@
 mod vulkan;
 pub mod camera;
 pub mod game_renderer;
+pub mod ash_port;
 
 use std::sync::Arc;
 

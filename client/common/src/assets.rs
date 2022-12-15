@@ -20,3 +20,11 @@ macro_rules! include_shader {
     }};
 }
 
+pub mod shaders {
+    // The vertex shader for all full cubes with textures, i.e the main
+    // vertex shader that renders the majority of the world
+    pub const TEXTURED_FULL_CUBE_VERT : &[u8] = include_shader!("textured_full_cube.vert");
+    
+    // The fragment shader for all textured + lit geometry
+    pub const TEXTURED_LIT_FRAG : &[u8] = include_shader!("textured_lit.frag");
+}

@@ -1,21 +1,13 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::num::NonZeroU32;
 
+use ash::vk::{self, BufferUsageFlags, MemoryHeapFlags};
 use bytemuck::{Zeroable, Pod};
 use glam::{uvec3, IVec3, UVec3};
+use gpu_allocator::MemoryLocation;
 use log::debug;
-use vulkano::{
-    buffer::{
-        BufferUsage, DeviceLocalBuffer, BufferAccess,
-    },
-    device::physical::PhysicalDeviceType,
-    memory::{MemoryHeapFlags, MemoryProperties}, command_buffer::{CopyBufferInfo, BufferCopy},
-};
 use xalloc::SysTlsf;
 
-use crate::{
-    vulkan::{CmdBufBuilder, VkState},
-    Renderer,
-};
+use crate::ash_port::{RendererBase, vulkan::{Vk, self, util::GpuBuffer}};
 
 pub fn build_test_chunk() -> Vec<FaceData> {
     let mut res = Vec::new();
@@ -108,7 +100,7 @@ pub struct RenderWorld {
     chunks: Box<[Option<RenderChunk>]>,
     offset: IVec3,
 
-    gpu_buffer: Arc<DeviceLocalBuffer<[u8]>>,
+    gpu_buffer: GpuBuffer,
     chunk_mesh_allocator: SysTlsf<u32>,
     index_buffer_offset: u32,
 }
@@ -124,37 +116,17 @@ impl RenderWorld {
     /// memory very greedily. A detail worth keeping hidden within the crate.
     pub(crate) fn new(
         player_chunk_pos: IVec3,
-        renderer: &Renderer,
-        setup_commands: &mut CmdBufBuilder,
+        renderer: &RendererBase
     ) -> anyhow::Result<Self> {
         let buffer = allocate_mesh_buffer(&renderer.vk);
 
         let indices = generate_indices();
-        let indices_bytes = bytemuck::cast_slice(indices.as_slice());
-        let index_buffer_offset = buffer.size() as u32 - INDEX_BUFFER_SIZE;
+        let index_buffer_offset = buffer.size - INDEX_BUFFER_SIZE;
 
         let test_chunk = build_test_chunk();
         let test_chunk_bytes : &[u8] = bytemuck::cast_slice(test_chunk.as_slice());
         
-        {
-            let mut writer = renderer.vk.staging
-                .write()
-                .unwrap();
-
-
-            (&mut writer[..indices_bytes.len()]).copy_from_slice(indices_bytes);
-            (&mut writer[indices_bytes.len()..indices_bytes.len() + test_chunk_bytes.len()]).copy_from_slice(test_chunk_bytes);
-        }
-
-        let mut cp_buf_1 = CopyBufferInfo::buffers(renderer.vk.staging.clone(), buffer.clone());
-        cp_buf_1.regions = [BufferCopy {
-            src_offset: 0,
-            dst_offset: buffer.size() - INDEX_BUFFER_SIZE as u64,
-            size: INDEX_BUFFER_SIZE as _,
-            ..Default::default()
-        }].into();
-
-        let suballocator = SysTlsf::new(buffer.size() as u32 - INDEX_BUFFER_SIZE);
+        let suballocator = SysTlsf::new(buffer.size - INDEX_BUFFER_SIZE);
 
         Ok(Self {
             chunks: vec![].into_boxed_slice(),
@@ -168,12 +140,12 @@ impl RenderWorld {
     pub fn update_chunk_mesh(&mut self, chunk_pos: IVec3, mesh: ChunkMeshView) {}
 }
 
-fn allocate_mesh_buffer(vk: &VkState) -> Arc<DeviceLocalBuffer<[u8]>> {
+fn allocate_mesh_buffer(vk: &Vk) -> GpuBuffer {
     debug!("Allocating mesh buffer");
-    let mem_properties = vk.device.physical_device().memory_properties();
+    let mem_properties = &vk.device.mem_properties;
 
     let mut total_memory = get_device_local_memory_heap_size(mem_properties);
-    if vk.device.physical_device().properties().device_type == PhysicalDeviceType::IntegratedGpu {
+    if vk.device.kind != vk::PhysicalDeviceType::DISCRETE_GPU {
         // iGPUs share RAM with the CPU, so the reported amount available is massive.
         // Arbitrarily cap to 2GB for these devices. 70% of that is still a fair amount
         total_memory = total_memory.min(1 << 31);
@@ -184,32 +156,25 @@ fn allocate_mesh_buffer(vk: &VkState) -> Arc<DeviceLocalBuffer<[u8]>> {
     for percentage in [70, 55, 45, 30, 20, 15] {
         let size = total_memory * percentage / 100;
 
-        let result = DeviceLocalBuffer::<[u8]>::array(&vk.allocator, size as u64, BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST, vk.device.active_queue_family_indices().iter().copied());
-        if let Ok(allocation) = result {
-            debug!(
-                "Allocation success with p={percentage}%; allocated {} bytes", allocation.size()
-            );
-            return allocation;
-        }
-
-        /* if let Ok(buffer) = vulkan::allocate_buffer(
-            vk.device.clone(),
-            size as u64,
-            Some(mem_properties),
-            BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+        if let Ok(buffer) = vulkan::util::allocate_buffer(
+            "Mesh buffer",
+            vk,
+            size as u32,
+            BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuOnly,
         ) {
             debug!(
                 "Allocation success with p={percentage}%; allocated {} bytes",
-                buffer.size()
+                buffer.size
             );
             return buffer;
-        } */
+        }
     }
     // Not much you can do to recover here
     panic!("Couldn't allocate GPU memory for chunk meshes!")
 }
 
-fn get_device_local_memory_heap_size(properties: &MemoryProperties) -> usize {
+fn get_device_local_memory_heap_size(properties: &vk::PhysicalDeviceMemoryProperties) -> usize {
     // Tricky to implement properly: there is no one API call to get you the
     // total size of device-local memory because that doesn't make sense: the memory
     // can be split over multiple heaps. So yes, multiple heaps may have he device local

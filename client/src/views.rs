@@ -26,8 +26,8 @@ impl View {
         Box::new(View::MainMenu(MainMenuView::new()))
     }
 
-    pub fn game(login_response: LoginResponse, res: &mut Resources) -> Box<View> {
-        Box::new(View::Game(GameView::new(login_response, res)))
+    pub fn game(login_response: LoginResponse, res: &mut Resources) -> anyhow::Result<Box<View>> {
+        Ok(Box::new(View::Game(GameView::new(login_response, res)?)))
     }
 }
 

@@ -37,7 +37,7 @@ impl MainMenuView {
             Ok(None) => {},
             Ok(Some((response, _connection))) => {
                 info!("Connected! {response:?}");
-                return switch_to(View::game(response, res));
+                return switch_to(View::game(response, res).unwrap());
             }
             Err(e) => {
                 warn!("Error: {e}, retrying...");

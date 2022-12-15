@@ -1,5 +1,5 @@
 use glam::IVec3;
-use vulkano::command_buffer::{RenderPassBeginInfo, SubpassContents};
+use vulkano::{command_buffer::{RenderPassBeginInfo, SubpassContents, PrimaryCommandBufferAbstract}, sync::GpuFuture};
 
 use crate::{Renderer, vulkan::CmdBufBuilder};
 
@@ -17,11 +17,22 @@ pub struct GameRenderer {
 }
 
 impl GameRenderer {
-    pub fn new(player_chunk_pos: IVec3, renderer: &Renderer) -> Self {
-        Self {
-            world: RenderWorld::new(player_chunk_pos, renderer),
-            state: state::init(&renderer.vk).unwrap()
-        }
+    pub fn new(player_chunk_pos: IVec3, renderer: &Renderer) -> anyhow::Result<Self> {
+        let mut setup_commands = renderer.vk.new_command_buf().unwrap();
+
+        let world = RenderWorld::new(player_chunk_pos, renderer, &mut setup_commands)?;
+        let state = state::init(&renderer.vk)?;
+
+        setup_commands
+            .build()?
+            .execute(renderer.vk.queue.clone())?
+            .then_signal_fence_and_flush()?
+            .wait(None /* timeout */)?;
+
+        Ok(Self {
+            world,
+            state
+        })
     }
 }
 

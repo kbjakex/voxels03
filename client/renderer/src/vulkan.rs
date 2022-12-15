@@ -1,19 +1,44 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
+
 use vulkano::{
+    buffer::{
+        sys::{Buffer, BufferCreateInfo, RawBuffer},
+        BufferCreateFlags, BufferUsage, CpuAccessibleBuffer,
+    },
+    command_buffer::{
+        allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
+        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, CommandBufferUsage,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFlags, Queue,
+        Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
     },
     image::{ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
-    swapchain::{Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError, PresentMode},
-    VulkanLibrary, memory::allocator::{StandardMemoryAllocator}, command_buffer::{allocator::{StandardCommandBufferAllocator, CommandBufferAllocator}, AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
+    memory::{
+        allocator::{MemoryAlloc, StandardMemoryAllocator},
+        DedicatedAllocation, DeviceMemory, ExternalMemoryHandleTypes, MemoryAllocateFlags,
+        MemoryAllocateInfo, MemoryProperties, MemoryPropertyFlags,
+    },
+    swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+    sync::Sharing,
+    VulkanLibrary,
 };
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
 pub const PRESENT_MODE: PresentMode = PresentMode::Fifo;
+
+// As per the Vulkano docs: this should ideally be big enough
+// that all allocations for a frame fit in one arena. Chunks are
+// kind of large, and there can be many of them, so it should
+// be decently large.
+// The Sodium Minecraft mod uses a staging buffer of 16 MiB from
+// what I know, though I'm not sure what exactly it does with it,
+// since OpenGL handles uploads for you
+pub const STAGING_ARENA_SIZE: u64 = 8192 * 1024; // 8 MiB
 
 pub type CmdBufBuilder = AutoCommandBufferBuilder<
     PrimaryAutoCommandBuffer<<StandardCommandBufferAllocator as CommandBufferAllocator>::Alloc>,
@@ -29,6 +54,19 @@ pub struct VkState {
     pub swapchain_images: Vec<Arc<SwapchainImage>>,
     pub allocator: Arc<StandardMemoryAllocator>,
     pub command_buffer_allocator: StandardCommandBufferAllocator,
+
+    // Pool of host-visible GPU memory for uploads (CPU->GPU transfers)
+    pub staging: Arc<CpuAccessibleBuffer<[u8]>>,
+}
+
+impl VkState {
+    pub fn new_command_buf(&self) -> anyhow::Result<CmdBufBuilder> {
+        AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        ).map_err(|e| anyhow!(e))
+    }
 }
 
 fn get_device_extensions() -> DeviceExtensions {
@@ -81,6 +119,11 @@ pub fn init_vulkan(window: Arc<Window>) -> anyhow::Result<VkState> {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
+    let staging = unsafe {
+        // Not sure why this is unsafe? Docs don't explain what's unsafe about this, and this is what I need
+        CpuAccessibleBuffer::uninitialized_array(&allocator, STAGING_ARENA_SIZE, BufferUsage::TRANSFER_SRC, false)
+    }?;
+
     Ok(VkState {
         lib,
         instance,
@@ -90,6 +133,8 @@ pub fn init_vulkan(window: Arc<Window>) -> anyhow::Result<VkState> {
         swapchain_images,
         allocator,
         command_buffer_allocator,
+
+        staging
     })
 }
 
@@ -157,4 +202,61 @@ fn create_swapchain(
             ..Default::default()
         },
     )
+}
+
+pub fn allocate_buffer(
+    device: Arc<Device>,
+    size_bytes: u64,
+    memory_properties: Option<&MemoryProperties>,
+    usage: BufferUsage,
+) -> anyhow::Result<Buffer> {
+    // Note: this doesn't allocate anything yet!
+    let buffer = RawBuffer::new(
+        device.clone(),
+        BufferCreateInfo {
+            flags: BufferCreateFlags::default(),
+            sharing: Sharing::Exclusive,
+            size: size_bytes as u64,
+            // TRANSFER_DST is needed to be able to copy from staging buffer into this buffer
+            usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
+            ..Default::default()
+        },
+    )?;
+
+    let buffer_mem_reqs = buffer.memory_requirements();
+
+    // Find a suitable memory type. These are generally ordered approximately
+    // best first, worst last, so pick the first one that works.
+    // This is also what the official documentation recommends at
+    // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceMemoryProperties.html
+    let memory_type_index = memory_properties
+        .unwrap_or_else(|| device.physical_device().memory_properties())
+        .memory_types
+        .iter()
+        .enumerate()
+        .find_map(|(i, mem_type)| {
+            (((1 << i as u32) & buffer_mem_reqs.memory_type_bits) != 0
+                && mem_type
+                    .property_flags
+                    .contains(MemoryPropertyFlags::DEVICE_LOCAL))
+            .then_some(i as u32)
+        })
+        .unwrap();
+
+    let allocation = MemoryAlloc::new(DeviceMemory::allocate(
+        device,
+        MemoryAllocateInfo {
+            allocation_size: buffer_mem_reqs.size,
+            memory_type_index,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            export_handle_types: ExternalMemoryHandleTypes::empty(),
+            flags: MemoryAllocateFlags::empty(),
+            ..Default::default()
+        },
+    )?)?;
+
+    let buffer = buffer.bind_memory(allocation).map_err(|(err, ..)| err)?;
+
+    Ok(buffer)
 }

@@ -2,7 +2,7 @@ pub mod state;
 
 use log::debug;
 use netcode::login::LoginResponse;
-use renderer::game_renderer::GameRenderer;
+use renderer::ash_port::game_renderer::GameRenderer;
 use winit::event::{Event, WindowEvent};
 
 use crate::{views::StateChange, resources::Resources, world::chunk::WorldBlockPosExt};
@@ -15,13 +15,13 @@ pub struct GameView {
 }
 
 impl GameView {
-    pub fn new(login_response: LoginResponse, res: &mut Resources) -> Self {
-        Self {
+    pub fn new(login_response: LoginResponse, res: &mut Resources) -> anyhow::Result<Self> {
+        Ok(Self {
             _state: GameState {
 
             },
-            renderer: GameRenderer::new(login_response.position.as_ivec3().to_chunk_pos(), &res.renderer)
-        }
+            renderer: GameRenderer::new(login_response.position.as_ivec3().to_chunk_pos(), &res.renderer)?
+        })
     }
 }
 

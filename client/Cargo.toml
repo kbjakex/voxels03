@@ -13,7 +13,7 @@ quinn = { git = "https://github.com/quinn-rs/quinn" }
 arboard = "3.2.0"
 anyhow = "1.0.66"
 log = "0.4.17"
-fern = "0.6.1"
+fern = { version = "0.6.1", features = ["colored"] }
 chrono = "0.4.23"
 
 common = { path = "common" }

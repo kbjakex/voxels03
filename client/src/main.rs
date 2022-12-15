@@ -57,10 +57,21 @@ fn process_state_change(change: StateChange, view: &mut Box<View>, res: &mut Res
 }
 
 fn init_logger() {
+    use fern::colors::Color;
+    let colors_line = fern::colors::ColoredLevelConfig::new()
+        .error(Color::Red)
+        .warn(Color::Yellow)
+        .info(Color::White)
+        .debug(Color::White)
+        .trace(Color::BrightBlack);
+
+    //let colors_level = colors_line.clone().info(Color::Green);
+
     fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
-                "{} [{} : {}] {}",
+                "\x1B[{}m{} [{} : {}] {}\x1B[0m",
+                colors_line.get_color(&record.level()).to_fg_str(),
                 chrono::Local::now().format("%H:%M:%S"),
                 &record.target()[record.target().find(':').map_or(0, |i| i + 2)..],
                 record.level(),
