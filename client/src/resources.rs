@@ -1,8 +1,8 @@
-use std::{time::Instant, sync::Arc};
+use std::time::Instant;
 
 use glam::{ivec2, vec2};
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use renderer::{Renderer, ash_port::RendererBase};
+use renderer::RendererBase;
 use winit::{event_loop::EventLoop, dpi::LogicalPosition, window::{WindowBuilder, Window}, event::{Event, WindowEvent}};
 
 use crate::util::{self, input::{Keyboard, Mouse}};

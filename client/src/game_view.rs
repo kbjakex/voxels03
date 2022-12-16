@@ -1,12 +1,10 @@
 pub mod state;
 
-use std::ops::Mul;
-
-use glam::{vec3, Vec3, Vec2, vec2};
+use glam::{Vec3, Vec2, vec2};
 use log::debug;
 use netcode::login::LoginResponse;
-use renderer::ash_port::game_renderer::GameRenderer;
-use winit::{event::{Event, WindowEvent, ElementState, MouseButton, DeviceEvent}, window::CursorGrabMode, dpi::LogicalPosition};
+use renderer::game_renderer::GameRenderer;
+use winit::{event::{Event, WindowEvent, ElementState, MouseButton, DeviceEvent}, dpi::LogicalPosition};
 
 use crate::{views::{StateChange, exit}, resources::Resources, world::chunk::WorldBlockPosExt, util::input::Key};
 

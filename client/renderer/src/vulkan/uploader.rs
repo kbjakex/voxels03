@@ -7,7 +7,7 @@ use gpu_allocator::{
 };
 use log::debug;
 
-use crate::ash_port::vulkan;
+use crate::vulkan;
 
 use super::{Device, GpuAllocator, util::GpuBuffer};
 

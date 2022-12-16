@@ -1,70 +1,74 @@
+use ash::vk;
 use glam::IVec3;
-use vulkano::{command_buffer::{RenderPassBeginInfo, SubpassContents, PrimaryCommandBufferAbstract}, sync::GpuFuture};
 
-use crate::{Renderer, vulkan::CmdBufBuilder};
+use crate::camera::Camera;
 
-use self::{world::RenderWorld, state::State};
+use self::{state::State, world::RenderWorld};
 
-
-
+use super::RendererBase;
 
 pub mod world;
 mod state;
 
 pub struct GameRenderer {
-    //pub world: RenderWorld,
+    pub world: RenderWorld,
     state: State
 }
 
 impl GameRenderer {
-    pub fn new(player_chunk_pos: IVec3, renderer: &Renderer) -> anyhow::Result<Self> {
-        let mut setup_commands = renderer.vk.new_command_buf().unwrap();
-
-        //let world = RenderWorld::new(player_chunk_pos, renderer, &mut setup_commands)?;
-        let state = state::init(&renderer.vk)?;
-
-        setup_commands
-            .build()?
-            .execute(renderer.vk.queue.clone())?
-            .then_signal_fence_and_flush()?
-            .wait(None /* timeout */)?;
+    pub fn new(player_chunk_pos: IVec3, renderer: &mut RendererBase) -> anyhow::Result<Self> {
+        let state = state::init(&mut renderer.vk)?;
+        let world = RenderWorld::new(player_chunk_pos, renderer, &state)?;
 
         Ok(Self {
-            //world,
+            world,
             state
         })
     }
 }
 
 impl GameRenderer {
-    fn render_inner(&mut self, renderer: &Renderer, commands: &mut CmdBufBuilder, image_index: usize) -> anyhow::Result<()> {
-        let _vk = &renderer.vk;
+    fn render_inner(&mut self, camera: &Camera, renderer: &RendererBase, cmd: vk::CommandBuffer, image_index: usize) -> anyhow::Result<()> {
+        let vk = &renderer.vk;
         let state = &self.state;
 
-        commands
-            .begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: vec![Some([1.0, 0.0, 0.0, 1.0].into())],
-                    ..RenderPassBeginInfo::framebuffer(state.framebuffers[image_index].clone())
-                },
-                SubpassContents::Inline,
-            )?
-            .set_viewport(0, [state.viewport.clone()])
-            .end_render_pass()?;
+        unsafe {
+            vk.device.cmd_begin_render_pass(cmd, &vk::RenderPassBeginInfo::builder()
+                .clear_values(&[vk::ClearValue{
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0]
+                    }
+                }])
+                .framebuffer(state.main_pass_framebuffers[image_index])
+                .render_pass(state.main_render_pass)
+                .render_area(vk::Rect2D {
+                    offset: vk::Offset2D::builder().build(),
+                    extent: vk.swapchain.surface.extent,
+                })
+            , vk::SubpassContents::INLINE);
+
+            let mvp = camera.proj_view_matrix().to_cols_array();
+            let mvp_bytes = bytemuck::cast_slice(&mvp);
+            vk.device.cmd_push_constants(cmd, state.full_block_pipeline.layout, vk::ShaderStageFlags::VERTEX, 0, mvp_bytes);
+
+            self.world.render(cmd, vk, state)?;
+
+            vk.device.cmd_end_render_pass(cmd);
+        }
 
         Ok(())
     }
 
-    pub fn render(&mut self, renderer: &mut Renderer) -> anyhow::Result<()> {
+    pub fn render(&mut self, camera: &Camera, renderer: &mut RendererBase) -> anyhow::Result<()> {
         renderer.render(|renderer, commands, image_index| {
-            self.render_inner(renderer, commands, image_index)
+            self.render_inner(camera, renderer, commands, image_index)
         })
     }
 }
 
 impl GameRenderer {
     #[cold]
-    pub fn handle_window_resize(&mut self, renderer: &Renderer) {
+    pub fn handle_window_resize(&mut self, renderer: &RendererBase) {
         self.state.handle_window_resize(&renderer.vk);
     }
 }

@@ -1,6 +1,6 @@
-mod debug_callback;
 pub mod uploader;
 pub mod util;
+mod debug_callback;
 
 use std::{ffi::CStr, ops::Deref};
 
@@ -11,7 +11,7 @@ use log::debug;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::window::Window;
 
-use self::{phys_device_selection::GraphicsDeviceDetails, debug_callback::DebugMessageHandler, uploader::Uploader};
+use self::{phys_device_selection::GraphicsDeviceDetails, uploader::Uploader, debug_callback::DebugMessageHandler};
 
 pub const PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::FIFO;
 
