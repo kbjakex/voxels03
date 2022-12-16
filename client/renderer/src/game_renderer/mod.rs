@@ -12,7 +12,7 @@ pub mod world;
 mod state;
 
 pub struct GameRenderer {
-    pub world: RenderWorld,
+    //pub world: RenderWorld,
     state: State
 }
 
@@ -20,7 +20,7 @@ impl GameRenderer {
     pub fn new(player_chunk_pos: IVec3, renderer: &Renderer) -> anyhow::Result<Self> {
         let mut setup_commands = renderer.vk.new_command_buf().unwrap();
 
-        let world = RenderWorld::new(player_chunk_pos, renderer, &mut setup_commands)?;
+        //let world = RenderWorld::new(player_chunk_pos, renderer, &mut setup_commands)?;
         let state = state::init(&renderer.vk)?;
 
         setup_commands
@@ -30,7 +30,7 @@ impl GameRenderer {
             .wait(None /* timeout */)?;
 
         Ok(Self {
-            world,
+            //world,
             state
         })
     }
@@ -44,7 +44,7 @@ impl GameRenderer {
         commands
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
+                    clear_values: vec![Some([1.0, 0.0, 0.0, 1.0].into())],
                     ..RenderPassBeginInfo::framebuffer(state.framebuffers[image_index].clone())
                 },
                 SubpassContents::Inline,

@@ -63,11 +63,53 @@ unsafe extern "system" fn debug_callback(
     let message = format!("[{message_type:?} : {message_id_name} ({message_id_number})]\n{message}\n");
 
     match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => error!("{message}"),
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
+            let backtrace = gen_backtrace_string();
+            error!("{message}\nBacktrace:\n{backtrace}");
+        }
         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => warn!("{message}"),
         vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => debug!("{message}"),
         _ => info!("{message}"),
     }
 
     vk::FALSE
+}
+
+fn gen_backtrace_string() -> String {
+    // The code might not be fast or pretty, but the output is useful
+    use std::fmt::Write;
+    let trace = std::backtrace::Backtrace::force_capture();
+    // For whatever reason, it prints the 100% complete backtrace,
+    // which is not useful; really only the entries from this crate
+    // are of interest
+    let mut trace_string = String::new();
+    _ = write!(&mut trace_string, "{trace}");
+
+    // First: the backtrace will uselessly start from this module,
+    // followed by a bunch of <unknown>s because it went through Vulkan.
+    // Keep cutting off stuff until no <unknown>s are found
+    while let Some(i) = trace_string.find("<unknown>") {
+        trace_string = (&trace_string[i + "<unknown>".len()..]).into();
+    }
+
+    // Remove the remains of the first line...
+    for i in 0..trace_string.len()-1 {
+        if trace_string.as_bytes()[i] == b'\n' {
+            trace_string = (&trace_string[i+1..]).into();
+            break;
+        }
+    }
+
+    trace_string = "...\n".to_owned() + &trace_string;
+
+    // Cut off at winit, since that's certainly far away enough
+    if let Some(mut i) = trace_string.find("winit") {
+        let substr = &trace_string[..i];
+        while i > 1 && substr.as_bytes()[i-1] != b'\n' {
+            i -= 1;
+        }
+        trace_string = (&trace_string[..i]).to_owned() + "...";
+    }
+
+    trace_string
 }

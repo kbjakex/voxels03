@@ -1,13 +1,18 @@
 use std::num::NonZeroU32;
 
 use ash::vk::{self, BufferUsageFlags, MemoryHeapFlags};
-use bytemuck::{Zeroable, Pod};
+use bytemuck::{Pod, Zeroable};
 use glam::{uvec3, IVec3, UVec3};
 use gpu_allocator::MemoryLocation;
 use log::debug;
 use xalloc::SysTlsf;
 
-use crate::ash_port::{RendererBase, vulkan::{Vk, self, util::GpuBuffer}};
+use crate::ash_port::{
+    vulkan::{self, util::GpuBuffer, Vk},
+    RendererBase,
+};
+
+use super::state::State;
 
 pub fn build_test_chunk() -> Vec<FaceData> {
     let mut res = Vec::new();
@@ -100,15 +105,18 @@ pub struct RenderWorld {
     chunks: Box<[Option<RenderChunk>]>,
     offset: IVec3,
 
+    test_chunk_faces: u32,
+
     gpu_buffer: GpuBuffer,
     chunk_mesh_allocator: SysTlsf<u32>,
-    index_buffer_offset: u32,
+
+    index_buffer: GpuBuffer,
 }
 
 // Each face needs 6 indices, and there are 32³/2*6 = 98304 faces, so
 // worst case is 32³/2*6*6 = 589824 indices or 2359296 bytes, or 2.25 MiB, for a checkerboard.
 // Those shall be placed at the end of the buffer...
-const INDEX_BUFFER_SIZE: u32 = 2359296;
+const INDEX_BUFFER_SIZE: u32 = 589824;
 
 impl RenderWorld {
     /// pub(crate) because this should definitely be ran only after all other resources
@@ -116,31 +124,93 @@ impl RenderWorld {
     /// memory very greedily. A detail worth keeping hidden within the crate.
     pub(crate) fn new(
         player_chunk_pos: IVec3,
-        renderer: &RendererBase
+        renderer: &mut RendererBase,
+        state: &State,
     ) -> anyhow::Result<Self> {
-        let buffer = allocate_mesh_buffer(&renderer.vk);
+        let buffer = allocate_mesh_buffer(&mut renderer.vk);
 
-        let indices = generate_indices();
-        let index_buffer_offset = buffer.size - INDEX_BUFFER_SIZE;
+        let vk = &mut renderer.vk;
 
         let test_chunk = build_test_chunk();
-        let test_chunk_bytes : &[u8] = bytemuck::cast_slice(test_chunk.as_slice());
-        
-        let suballocator = SysTlsf::new(buffer.size - INDEX_BUFFER_SIZE);
+
+        let index_buffer = vulkan::util::allocate_buffer_and_bind(
+            "Index Buffer",
+            &vk.device,
+            &mut vk.allocator,
+            INDEX_BUFFER_SIZE * std::mem::size_of::<u32>() as u32,
+            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuOnly,
+        )?;
+
+        let indices = generate_indices();
+        vk.uploader
+            .upload_to_buffer(&indices, index_buffer.handle, 0)?;
+        vk.uploader
+            .upload_to_buffer(&test_chunk, buffer.handle, 0)?;
+
+        let suballocator = SysTlsf::new(buffer.size);
+
+        unsafe {
+            vk.device.update_descriptor_sets(
+                &[vk::WriteDescriptorSet::builder()
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .dst_array_element(0)
+                    .dst_binding(0)
+                    .dst_set(state.descriptors.full_block.handle)
+                    .buffer_info(&[vk::DescriptorBufferInfo::builder()
+                        .buffer(buffer.handle)
+                        .offset(0)
+                        .range(buffer.size as u64)
+                        .build()])
+                    .build()],
+                &[],
+            );
+        }
 
         Ok(Self {
             chunks: vec![].into_boxed_slice(),
             offset: player_chunk_pos,
+
+            test_chunk_faces: test_chunk.len() as u32,
+
             gpu_buffer: buffer,
             chunk_mesh_allocator: suballocator,
-            index_buffer_offset,
+            index_buffer,
         })
+    }
+
+    pub fn render(&mut self, cmd: vk::CommandBuffer, vk: &Vk, state: &State) -> anyhow::Result<()> {
+        unsafe {
+            vk.device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                state.full_block_pipeline.layout,
+                0,
+                &[state.descriptors.full_block.handle],
+                &[],
+            );
+            vk.device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                state.full_block_pipeline.handle,
+            );
+            vk.device.cmd_bind_index_buffer(
+                cmd,
+                self.index_buffer.handle,
+                0,
+                vk::IndexType::UINT32,
+            );
+            vk.device
+                .cmd_draw_indexed(cmd, self.test_chunk_faces * 6, 1, 0, 0, 0);
+        }
+
+        Ok(())
     }
 
     pub fn update_chunk_mesh(&mut self, chunk_pos: IVec3, mesh: ChunkMeshView) {}
 }
 
-fn allocate_mesh_buffer(vk: &Vk) -> GpuBuffer {
+fn allocate_mesh_buffer(vk: &mut Vk) -> GpuBuffer {
     debug!("Allocating mesh buffer");
     let mem_properties = &vk.device.mem_properties;
 
@@ -154,11 +224,13 @@ fn allocate_mesh_buffer(vk: &Vk) -> GpuBuffer {
     debug!("Total device-local memory: {total_memory}");
     // Greedily try to allocate until one works
     for percentage in [70, 55, 45, 30, 20, 15] {
-        let size = total_memory * percentage / 100;
+        let mut size = total_memory * percentage / 100;
+        size = size.min(vk.device.limits.max_storage_buffer_range as usize);
 
-        if let Ok(buffer) = vulkan::util::allocate_buffer(
+        if let Ok(buffer) = vulkan::util::allocate_buffer_and_bind(
             "Mesh buffer",
-            vk,
+            &vk.device,
+            &mut vk.allocator,
             size as u32,
             BufferUsageFlags::STORAGE_BUFFER | BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuOnly,

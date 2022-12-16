@@ -2,11 +2,12 @@ mod debug_callback;
 pub mod uploader;
 pub mod util;
 
-use std::{ffi::CStr, cell::RefCell, ops::Deref};
+use std::{ffi::CStr, ops::Deref};
 
 use anyhow::{anyhow, Result};
 use ash::{vk, Entry, Instance};
 use gpu_allocator::{vulkan::{AllocatorCreateDesc}, AllocatorDebugSettings};
+use log::debug;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::window::Window;
 
@@ -41,6 +42,7 @@ pub struct Swapchain {
 impl Swapchain {
     pub fn recreate(&self, new_extent: vk::Extent2D, vk: &Vk) -> Result<Self> {
         let surface = self.surface.clone();
+        debug!("SWAPCHAIN RECREATED");
         unsafe { create_swapchain(&vk.instance, &vk.device, surface, new_extent, Some(self.handle)) }
     }
 }
@@ -49,6 +51,7 @@ pub struct Device {
     pub handle: ash::Device,
     pub physical: vk::PhysicalDevice,
     pub mem_properties: vk::PhysicalDeviceMemoryProperties,
+    pub limits: vk::PhysicalDeviceLimits,
     pub kind: vk::PhysicalDeviceType,
 
     pub queue_family_idx: u32,
@@ -72,7 +75,7 @@ pub struct Vk {
     pub swapchain: Swapchain,
     pub command_pool: vk::CommandPool,
 
-    pub allocator: RefCell<GpuAllocator>,
+    pub allocator: GpuAllocator,
     pub uploader: Uploader,
 
     debug_msg_handler: Option<DebugMessageHandler>,
@@ -114,7 +117,7 @@ impl Vk {
                 swapchain,
                 command_pool,
                 debug_msg_handler,
-                allocator: RefCell::new(allocator),
+                allocator,
                 uploader,
             }))
         }
@@ -257,6 +260,7 @@ unsafe fn create_device(instance: &Instance, surface: &Surface) -> Result<Device
         handle,
         physical: physical_device,
         mem_properties,
+        limits: properties.limits,
         kind: properties.device_type,
         queue_family_idx: queue_idx,
         queue,
@@ -327,6 +331,7 @@ mod swapchain_init {
         gpu: &Device,
         format: vk::Format,
     ) -> Result<vk::ImageView> {
+        
         let image_view_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -356,7 +361,7 @@ mod swapchain_init {
 
         let res = formats.iter().find(|surface_format| {
             debug!("Found surface format: {surface_format:?}");
-            surface_format.format == vk::Format::B8G8R8A8_UNORM
+            surface_format.format == vk::Format::B8G8R8A8_SRGB
                 && surface_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
         });
         //.or_else(|| formats.get(0));

@@ -1,16 +1,15 @@
-use ash::{
-    vk::{self, BufferCreateFlags, BufferCreateInfo, BufferUsageFlags, SharingMode},
-};
+use ash::vk::{self, BufferUsageFlags};
 
 use anyhow::{bail, Result};
 use bytemuck::Pod;
 use gpu_allocator::{
-    vulkan::{Allocation, AllocationCreateDesc},
     MemoryLocation,
 };
 use log::debug;
 
-use super::{Device, GpuAllocator};
+use crate::ash_port::vulkan;
+
+use super::{Device, GpuAllocator, util::GpuBuffer};
 
 const STAGING_BUFFER_SIZE: u64 = 1 << 24; // 16 MiB (same as Sodium)
 
@@ -43,8 +42,7 @@ pub struct Uploader {
 
     upload_fence: vk::Fence,
 
-    allocation: Allocation,
-    staging_buffer: vk::Buffer,
+    buffer: GpuBuffer,
     staging_buffer_head: u32,
     pending_copy_ops: Vec<MemCopyOp>,
     pending_mip_gens: Vec<MipGenData>,
@@ -55,12 +53,12 @@ pub struct Uploader {
 impl Uploader {
     pub fn new(device: &Device, allocator: &mut GpuAllocator) -> Result<Self> {
         let fence_info = vk::FenceCreateInfo::builder();
-        let fence = unsafe { device.handle.create_fence(&fence_info, None) }?;
+        let fence = unsafe { device.create_fence(&fence_info, None) }?;
 
         let cmd_pool_info =
             vk::CommandPoolCreateInfo::builder().queue_family_index(device.queue_family_idx);
 
-        let cmd_pool = unsafe { device.handle.create_command_pool(&cmd_pool_info, None) }?;
+        let cmd_pool = unsafe { device.create_command_pool(&cmd_pool_info, None) }?;
         let cmd_buf_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(cmd_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -71,41 +69,20 @@ impl Uploader {
                 .allocate_command_buffers(&cmd_buf_allocate_info)
         }?;
 
-        let buffer = unsafe {
-            device.handle.create_buffer(
-                &BufferCreateInfo::builder()
-                    .flags(BufferCreateFlags::empty())
-                    .sharing_mode(SharingMode::EXCLUSIVE)
-                    .queue_family_indices(&[device.queue_family_idx])
-                    .size(STAGING_BUFFER_SIZE)
-                    .usage(BufferUsageFlags::TRANSFER_SRC),
-                None,
-            )?
-        };
-
-        let buffer_mem_reqs = unsafe { device.handle.get_buffer_memory_requirements(buffer) };
-
-        debug!("Allocating staging buffer");
-        let allocation = allocator.allocate(&AllocationCreateDesc {
-            name: "Staging buffer",
-            requirements: buffer_mem_reqs,
-            location: MemoryLocation::CpuToGpu,
-            linear: true,
-        })?;
-
-        unsafe {
-            // Associate the buffer with the portion of the allocation that was just reserved
-            device
-                .handle
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
-        }
+        let buffer = vulkan::util::allocate_buffer_and_bind(
+            "Staging Buffer",
+            device,
+            allocator,
+            STAGING_BUFFER_SIZE as _,
+            BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::CpuToGpu,
+        )?;
 
         Ok(Uploader {
             pool: cmd_pool,
             commands: cmds[0],
             upload_fence: fence,
-            allocation,
-            staging_buffer: buffer,
+            buffer,
             staging_buffer_head: 0,
             pending_copy_ops: Vec::new(),
             pending_mip_gens: Vec::new(),
@@ -117,17 +94,18 @@ impl Uploader {
         unsafe {
             device.handle.destroy_fence(self.upload_fence, None);
             device.handle.destroy_command_pool(self.pool, None);
-            device.handle.destroy_buffer(self.staging_buffer, None);
+            device.handle.destroy_buffer(self.buffer.handle, None);
         }
-        allocator.free(std::mem::take(&mut self.allocation))?;
+        allocator.free(std::mem::take(&mut self.buffer.allocation))?;
         Ok(())
     }
 
-    pub fn upload_to_buffer<T: Pod>( // Pod  => Copy => Clone => Sized
+    pub fn upload_to_buffer<T: Pod>(
+        // Pod  => Copy => Clone => Sized
         &mut self,
         data: &[T],
         dst_buf: vk::Buffer,
-        dst_buf_offset: u32,
+        dst_buf_offset: u32, // in bytes
     ) -> Result<()> {
         let bytes = bytemuck::cast_slice(data);
 
@@ -144,7 +122,7 @@ impl Uploader {
             return Ok(());
         }
 
-        if self.staging_buffer_head + data.len() as u32 >= self.allocation.size() as u32 {
+        if self.staging_buffer_head + data.len() as u32 >= self.buffer.allocation.size() as u32 {
             // TODO: What should actually be done is allocating another buffer,
             // but so far this has never happened, and that adds a non-trivial
             // amount of complexity
@@ -152,16 +130,20 @@ impl Uploader {
                 "Staging buffer ran out of space! Uploaded {} bytes, head was at {}/{}",
                 data.len(),
                 self.staging_buffer_head,
-                self.allocation.size()
+                self.buffer.allocation.size()
             );
         }
 
         unsafe {
             // unwrap(): Some is always returned when memory is host-visible, which is the whole point here
-            let mapped_ptr = self.allocation.mapped_ptr().unwrap().as_ptr();
+            let mapped_ptr = self.buffer.allocation.mapped_ptr().unwrap().as_ptr().offset(self.staging_buffer_head as isize);
             std::ptr::copy_nonoverlapping(data.as_ptr(), mapped_ptr.cast(), data.len());
         }
 
+        debug!(
+            "Queued buffer copy of {} bytes with dst offset {offset}",
+            data.len()
+        );
         self.pending_copy_ops.push(MemCopyOp::Buf2Buffer {
             dst,
             src_offset: self.staging_buffer_head,
@@ -190,7 +172,7 @@ impl Uploader {
         }?;
 
         let cmd = self.commands;
-        let src = self.staging_buffer;
+        let src = self.buffer.handle;
         for &task in &self.pending_copy_ops {
             match task {
                 MemCopyOp::Buf2Buffer {
@@ -199,6 +181,7 @@ impl Uploader {
                     dst_offset,
                     size,
                 } => unsafe {
+                    debug!("Buffer copy of {size} bytes with src offset {src_offset}, dst_offset {dst_offset}");
                     device.handle.cmd_copy_buffer(
                         cmd,
                         src,
@@ -230,7 +213,8 @@ impl Uploader {
                             .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                             .src_access_mask(vk::AccessFlags::empty())
                             .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                            .subresource_range(range).build()],
+                            .subresource_range(range)
+                            .build()],
                     );
                     device.handle.cmd_copy_buffer_to_image(
                         cmd,
@@ -280,7 +264,9 @@ impl Uploader {
             let cmd_buffers = [self.commands];
             device.handle.queue_submit(
                 device.queue,
-                &[vk::SubmitInfo::builder().command_buffers(&cmd_buffers).build()],
+                &[vk::SubmitInfo::builder()
+                    .command_buffers(&cmd_buffers)
+                    .build()],
                 self.upload_fence,
             )
         }?;
@@ -458,7 +444,9 @@ impl Uploader {
             let cmd_buffers = [self.commands];
             device.handle.queue_submit(
                 device.queue,
-                &[vk::SubmitInfo::builder().command_buffers(&cmd_buffers).build()],
+                &[vk::SubmitInfo::builder()
+                    .command_buffers(&cmd_buffers)
+                    .build()],
                 self.upload_fence,
             )
         }?;

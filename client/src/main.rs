@@ -34,8 +34,11 @@ fn main() {
                 process_state_change(*change, &mut view, &mut resources, flow);
             }
             resources::update_post(&mut resources);
-        } else if let Some(change) = view.on_event(event, &mut resources) {
-            process_state_change(*change, &mut view, &mut resources, flow);
+        } else {
+            crate::util::input::handle_event(&event, &mut resources.input);
+            if let Some(change) = view.on_event(event, &mut resources) {
+                process_state_change(*change, &mut view, &mut resources, flow);
+            }
         }
 
     });

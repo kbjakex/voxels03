@@ -1,15 +1,24 @@
-use std::ffi::CStr;
-
 use ash::vk;
 
 use anyhow::Result;
 use common::assets;
 use log::debug;
-use crate::ash_port::vulkan::{Vk, util::{make_shader_module, make_shader_stage_create_info}};
+use crate::ash_port::{vulkan::{Vk, util::{make_shader_module, make_shader_stage_create_info, render_pass}}};
 
 pub struct Pipeline {
     pub handle: vk::Pipeline,
     pub layout: vk::PipelineLayout
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct DescriptorSet {
+    pub handle: vk::DescriptorSet,
+    pub layout: vk::DescriptorSetLayout,
+}
+
+pub struct DescriptorSets {
+    pub pool: vk::DescriptorPool,
+    pub full_block: DescriptorSet, // todo field name??
 }
 
 pub struct State {
@@ -21,9 +30,7 @@ pub struct State {
     pub full_block_pipeline: Pipeline,
 
     // Descriptor sets
-    pub descriptor_pool: vk::DescriptorPool,
-    pub full_block_dset_layout: vk::DescriptorSetLayout,
-    pub full_block_dset: vk::DescriptorSet,
+    pub descriptors: DescriptorSets,
 }
 
 impl State {
@@ -32,55 +39,34 @@ impl State {
     }
 }
 
-pub fn init(vk: &Vk) -> anyhow::Result<State> {
+pub fn init(vk: &mut Vk) -> anyhow::Result<State> {
     let wnd_extent = vk.swapchain.surface.extent;
 
-    debug!("{wnd_extent:?}; {}", vk.swapchain.image_views.len());
-
     let (main_render_pass, main_pass_framebuffers) = unsafe {
-        let pass = vk.device.create_render_pass(&vk::RenderPassCreateInfo::builder()
-            .attachments(&[
-                // Attachment 0:
-                vk::AttachmentDescription::builder()
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .format(vk.swapchain.surface.format.format)
-                .load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .flags(vk::AttachmentDescriptionFlags::empty())
-                .build()
-            ])
-            .subpasses(&[vk::SubpassDescription::builder()
-                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                .color_attachments(&[vk::AttachmentReference::builder()
-                    .attachment(0) // index to the array passed with attachments() above
-                    .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // layout to use during rendering
-                    .build()
-                ])
-                //.depth_stencil_attachment(depth_stencil_attachment)
-                .input_attachments(&[])
-                .preserve_attachments(&[])
-                .resolve_attachments(&[])
-                .flags(vk::SubpassDescriptionFlags::empty())
-                .build()
-            ])
-            .dependencies(&[
-                // Synchronization for writing to the color attachment
+        let pass = render_pass! {
+            device: &vk.device,
+            bind_point: vk::PipelineBindPoint::GRAPHICS,
+            attachments: [
+                color {
+                    format: vk.swapchain.surface.format.format,
+
+                    initial_layout: vk::ImageLayout::UNDEFINED,
+                    render_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+
+                    load_op: vk::AttachmentLoadOp::CLEAR,
+                },
+            ]
+            dependencies: [
                 vk::SubpassDependency::builder()
-                .src_subpass(vk::SUBPASS_EXTERNAL)
-                .dst_subpass(0)
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                .dependency_flags(vk::DependencyFlags::BY_REGION)
-                .build()
-            ])
-            .flags(vk::RenderPassCreateFlags::empty())
-        , None)?;
+                    .src_subpass(vk::SUBPASS_EXTERNAL)
+                    .dst_subpass(0)
+                    .src_access_mask(vk::AccessFlags::empty())
+                    .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                    .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                    .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            ]
+        }?;
 
         let framebuffers = vk.swapchain.image_views.iter().map(|view| {
             vk.device.create_framebuffer(&vk::FramebufferCreateInfo::builder()
@@ -94,41 +80,20 @@ pub fn init(vk: &Vk) -> anyhow::Result<State> {
         (pass, framebuffers)
     };
 
-    let descriptor_pool = unsafe {vk.device.create_descriptor_pool(
-        &vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&[
-                vk::DescriptorPoolSize::builder().descriptor_count(1).ty(vk::DescriptorType::STORAGE_BUFFER).build()
-            ])
-            .max_sets(2)
-        , None)?
-    };
-
-    let full_block_dset_layout = unsafe { vk.device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&[
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX)
-                    .descriptor_count(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .build()  
-            ])
-        , None)? 
-    };
-
-    let full_block_dset = unsafe { vk.device.allocate_descriptor_sets(
-        &vk::DescriptorSetAllocateInfo::builder()
-            .descriptor_pool(descriptor_pool)
-            .set_layouts(&[full_block_dset_layout])
-        )?[0]
-    };
+    let dsets = create_descriptor_sets(vk)?;
 
     let full_block_pipeline = unsafe {
         let vert_shader = make_shader_module(assets::shaders::TEXTURED_FULL_CUBE_VERT, vk)?;
         let frag_shader = make_shader_module(assets::shaders::TEXTURED_LIT_FRAG, vk)?;
 
         let layout = vk.device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::builder()
-            .push_constant_ranges(&[])
-            .set_layouts(&[full_block_dset_layout])
+            .push_constant_ranges(&[vk::PushConstantRange::builder()
+                .stage_flags(vk::ShaderStageFlags::VERTEX)
+                .offset(0)
+                .size(64) // mat4
+                .build()
+            ])
+            .set_layouts(&[dsets.full_block.layout])
             .flags(vk::PipelineLayoutCreateFlags::empty())
         , None)?;
 
@@ -184,7 +149,16 @@ pub fn init(vk: &Vk) -> anyhow::Result<State> {
                 .build()
             )
             .color_blend_state(&vk::PipelineColorBlendStateCreateInfo::builder()
-                .attachments(&[])
+                .attachments(&[vk::PipelineColorBlendAttachmentState {
+                    blend_enable: 0,
+                    src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+                    dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+                    color_blend_op: vk::BlendOp::ADD,
+                    src_alpha_blend_factor: vk::BlendFactor::ZERO,
+                    dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+                    alpha_blend_op: vk::BlendOp::ADD,
+                    color_write_mask: vk::ColorComponentFlags::RGBA,
+                }])
                 .logic_op_enable(false)
             )
             .multisample_state(&vk::PipelineMultisampleStateCreateInfo::builder()
@@ -206,14 +180,53 @@ pub fn init(vk: &Vk) -> anyhow::Result<State> {
         }
     };
 
+    debug!("State created!");
+
     Ok(State {
         main_render_pass,
         main_pass_framebuffers,
         
         full_block_pipeline,
         
-        descriptor_pool,
-        full_block_dset_layout,
-        full_block_dset,
+        descriptors: dsets,
+    })
+}
+
+fn create_descriptor_sets(vk: &mut Vk) -> Result<DescriptorSets> {
+    let pool = unsafe {vk.device.create_descriptor_pool(
+        &vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&[
+                vk::DescriptorPoolSize::builder().descriptor_count(1).ty(vk::DescriptorType::STORAGE_BUFFER).build(),
+                vk::DescriptorPoolSize::builder().descriptor_count(1).ty(vk::DescriptorType::UNIFORM_BUFFER).build(),
+            ])
+            .max_sets(2)
+        , None)?
+    };
+
+    let full_block_dset_layout = unsafe { vk.device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&[
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .descriptor_count(1)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .build()
+            ])
+        , None)? 
+    };
+
+    let full_block_dset = unsafe { vk.device.allocate_descriptor_sets(
+        &vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(pool)
+            .set_layouts(&[full_block_dset_layout])
+        )?[0]
+    };
+
+    Ok(DescriptorSets {
+        pool,
+        full_block: DescriptorSet {
+            handle: full_block_dset,
+            layout: full_block_dset_layout,
+        },
     })
 }

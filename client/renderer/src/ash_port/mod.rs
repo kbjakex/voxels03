@@ -3,7 +3,10 @@ pub mod vulkan;
 
 use anyhow::Result;
 use ash::vk;
+use log::debug;
 use winit::window::Window;
+
+use crate::camera::Camera;
 
 use self::vulkan::Vk;
 
@@ -62,6 +65,9 @@ impl RendererBase {
         ) -> anyhow::Result<()>,
     {
         // Do the dirty & uninteresting & generic work to keep actual render function clean
+        self.vk.uploader.flush_staged(&self.vk.device)?;
+        self.vk.uploader.wait_fence_if_unfinished(&self.vk.device)?;
+
         let vk = &self.vk;
         let frame = &self.per_frame_objects[self.frame_count % FRAME_OVERLAP];
         let cmd = frame.main_command_buffer;
@@ -78,7 +84,7 @@ impl RendererBase {
 
             let (image_index, _is_suboptimal) = vk.swapchain.loader.acquire_next_image(
                 self.vk.swapchain.handle,
-                u64::MAX,
+                1_000_000_000,
                 frame.present_semaphore,
                 vk::Fence::null(),
             )?;
@@ -140,6 +146,7 @@ impl RendererBase {
             Ok(r) => r,
             Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
         };
+        debug!("Swapchain recreated!");
 
         vk.swapchain = new_swapchain;
     }
